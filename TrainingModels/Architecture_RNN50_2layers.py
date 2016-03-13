@@ -80,9 +80,9 @@ def load_data(exp,on_ind):
     #############
     print '... loading data'
     
-    #basedir = '/vega/stats/users/erb2180/RetinaProject/Data/'
-    basedir = '/Volumes/Backup/RetinaProject/Data/Data/'
-    dataset= ''+basedir+'NSEM'+exp+'_movResp_crop.mat'
+    basedir = '/vega/stats/users/erb2180/RetinaProject/Data/'
+    #basedir = '/Volumes/Backup/RetinaProject/Data/Data/'
+    dataset= ''+basedir+'NSEM'+exp+'_movResp.mat'
     
     f = h5py.File(dataset)
     stimuli_train = numpy.array(f['FitMovies'])/255.00
@@ -406,7 +406,7 @@ def SGD_training():
                 neurnum: i_n})
 
     validate_model = theano.function(inputs=[index,i_n],
-            outputs=T.sum(negative_log_likelihood(y)),
+            outputs=cost,
             givens={
                 x: data_set_x_train[index * batch_size:(index + 1) * batch_size,ordered_rgc_indices[i_n,:]],
                 y: data_set_y_train[index * batch_size:(index + 1) * batch_size,i_n],
@@ -422,10 +422,56 @@ def SGD_training():
                 y: data_set_y_train[index * batch_size:(index + 1) * batch_size,i_n],
                 neurnum: i_n})
                 
+    #####################################
+    # GET INITIAL TRAIN/VAL/TEST LOSSES #
+    #####################################
+    print '... initial loss values'
+    # Initialize loss records
+    epoch = 0
+    all_train_scores=[]
+    all_val_epochs = []
+    all_test_epochs = []
+    all_train_epochs=[]
+    all_val_scores=[]
+    all_test_scores=[]
+
+    # Training loss
+    training_losses=[]
+    for i_train_movie in xrange(n_train_batches):
+        mini_iter = trainInds[i_train_movie]
+        # Loop over neurons and train
+        for nneur in xrange(0,Ncells):
+                minibatch_avg_cost = validate_model(mini_iter,nneur)
+                training_losses = numpy.append(training_losses,minibatch_avg_cost)
+    this_train_loss = numpy.sum(training_losses)
+    all_train_scores = numpy.append(all_train_scores,this_train_loss)
+    all_train_epochs = numpy.append(all_train_epochs,epoch)
+
+    # Validation loss
+    validation_losses=[]
+    for i_val_movie in xrange(n_valid_batches):
+        
+        for nneur in xrange(0,Ncells):
+            temp_val_cost = validate_model(valInds[i_val_movie],nneur)
+            validation_losses = numpy.append(validation_losses,temp_val_cost)
+
+    this_validation_loss = numpy.sum(validation_losses)
+    all_val_scores = numpy.append(all_val_scores,this_validation_loss)
+    all_val_epochs = numpy.append(all_val_epochs,epoch)
+
+    # Test loss
+    for nneur in xrange(0,Ncells):
+        test_losses_temp, test_pred_temp, test_actual_temp = test_model(nneur)
+        test_losses[nneur] = test_losses_temp
+
+    test_score = numpy.sum(test_losses)
+    all_test_scores = numpy.append(all_test_scores,test_score)
+    all_test_epochs = numpy.append(all_test_epochs,epoch)
 
     ###############
     # TRAIN MODEL #
     ###############
+
     print '... training'
 
     # early-stopping parameters
@@ -446,14 +492,9 @@ def SGD_training():
     test_score = 0.
     start_time = time.clock()
 
-    epoch = 0
+
     done_looping = False
-    all_train_scores=[]
-    all_val_epochs = []
-    all_test_epochs = []
-    all_train_epochs=[]
-    all_val_scores=[]
-    all_test_scores=[]
+
 
     pdb.set_trace()
     while (not done_looping): # Keep looping until converged according to early stopping criteria
@@ -519,7 +560,7 @@ def SGD_training():
                         test_pred[nneur,:] = test_pred_temp
                         test_actual[nneur,:] = test_actual_temp
 
-                test_score = numpy.mean(test_losses)
+                test_score = numpy.sum(test_losses)
                 all_test_scores = numpy.append(all_test_scores,test_score)
                 all_test_epochs = numpy.append(all_test_epochs,epoch)
                 
