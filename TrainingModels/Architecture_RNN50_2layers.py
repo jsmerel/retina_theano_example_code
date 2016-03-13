@@ -436,7 +436,7 @@ def SGD_training():
                                    # considered significant
     validation_frequency = min(n_train_batches, patience / 2)
                                   # go through this many
-                                  # minibatche before checking the network
+                                  # minibatchs before checking the network
                                   # on the validation set; in this case we
                                   # check every epoch
 
@@ -448,8 +448,10 @@ def SGD_training():
 
     epoch = 0
     done_looping = False
+    all_train_scores=[]
     all_val_epochs = []
     all_test_epochs = []
+    all_train_epochs=[]
     all_val_scores=[]
     all_test_scores=[]
 
@@ -459,77 +461,82 @@ def SGD_training():
         numpy.random.shuffle(trainInds) # Shuffle the order of train movies presented every epoch
         
         # Training section
+        training_losses=[]
         for i_train_movie in xrange(n_train_batches):
             mini_iter = trainInds[i_train_movie]
             
             # Loop over neurons and train
             for nneur in xrange(0,Ncells):
                 minibatch_avg_cost = train_model(mini_iter,nneur)
+                training_losses = numpy.append(training_losses,minibatch_avg_cost)
                 print minibatch_avg_cost
+        this_train_loss = numpy.sum(training_losses)
+        all_train_scores = numpy.append(all_train_scores,this_train_loss)
+        all_train_epochs = numpy.append(all_train_epochs,epoch)
+
+        # Iteration number
+        iter = (epoch - 1) * n_train_batches + minibatch_index
+
+        # Validation and testing every epoch
+        if iter % validation_frequency == 0:
             
-            # Iteration number
-            iter = (epoch - 1) * n_train_batches + minibatch_index
-
-            # Validation and testing every epoch
-            if iter % validation_frequency == 0:
+            # Validation Data
+            validation_losses=[]
+            for i_val_movie in xrange(n_valid_batches):
                 
-                # Validation Data
-                validation_losses=[]
-                for i_val_movie in xrange(n_valid_batches):
-                    
-                    for nneur in xrange(0,Ncells):
-                        temp_val_cost = validate_model(valInds[i_val_movie],nneur)
-                        validation_losses = numpy.append(validation_losses,temp_val_cost)
+                for nneur in xrange(0,Ncells):
+                    temp_val_cost = validate_model(valInds[i_val_movie],nneur)
+                    validation_losses = numpy.append(validation_losses,temp_val_cost)
+        
+            this_validation_loss = numpy.sum(validation_losses)
+            all_val_scores = numpy.append(all_val_scores,this_validation_loss)
+            all_val_epochs = numpy.append(all_val_epochs,epoch)
             
-                this_validation_loss = numpy.mean(validation_losses)
-                all_val_scores = numpy.append(all_val_scores,this_validation_loss)
-                all_val_epochs = numpy.append(all_val_epochs,epoch)
+            print('epoch %i, minibatch %i, validation error %f' %
+                 (epoch, minibatch_index + 1,
+                  this_validation_loss))
+
+            # If best validaton score so far
+            if this_validation_loss < best_validation_loss:
                 
-                print('epoch %i, minibatch %i, validation error %f' %
-                     (epoch, minibatch_index + 1,
-                      this_validation_loss))
+                # Improve patience if loss improvement is good enough
+                if this_validation_loss < best_validation_loss *  \
+                       improvement_threshold:
+                    patience = max(patience, iter * patience_increase)
 
-                # If best validaton score so far
-                if this_validation_loss < best_validation_loss:
-                    
-                    # Improve patience if loss improvement is good enough
-                    if this_validation_loss < best_validation_loss *  \
-                           improvement_threshold:
-                        patience = max(patience, iter * patience_increase)
+                best_validation_loss = this_validation_loss
+                best_iter = iter
+                best_params = copy.deepcopy(params)
 
-                    best_validation_loss = this_validation_loss
-                    best_iter = iter
-                    best_params = copy.deepcopy(params)
+                # Test Data
+                test_losses=numpy.zeros((Ncells,))
+                test_pred=numpy.zeros((Ncells,3600))
+                test_actual=numpy.zeros((Ncells,3600))
+                    #for i_test_movie in xrange(n_test_batches): #no more looping because I'm fitting a trial average version
+                for nneur in xrange(0,Ncells):
+                        test_losses_temp, test_pred_temp, test_actual_temp = test_model(nneur)
+                        test_losses[nneur] = test_losses_temp
+                        test_pred[nneur,:] = test_pred_temp
+                        test_actual[nneur,:] = test_actual_temp
 
-                    # Test Data
-                    test_losses=numpy.zeros((Ncells,))
-                    test_pred=numpy.zeros((Ncells,3600))
-                    test_actual=numpy.zeros((Ncells,3600))
-                        #for i_test_movie in xrange(n_test_batches): #no more looping because I'm fitting a trial average version
-                    for nneur in xrange(0,Ncells):
-                            test_losses_temp, test_pred_temp, test_actual_temp = test_model(nneur)
-                            test_losses[nneur] = test_losses_temp
-                            test_pred[nneur,:] = test_pred_temp
-                            test_actual[nneur,:] = test_actual_temp
-
-                    test_score = numpy.mean(test_losses)
-                    all_test_scores = numpy.append(all_test_scores,test_score)
-                    all_test_epochs = numpy.append(all_test_epochs,epoch)
-                    
-                    print(('     epoch %i, minibatch %i, test error of '
-                           'best model %f') %
-                          (epoch, minibatch_index + 1,
-                           numpy.sum(test_score)))
-                    if math.isnan(test_score):
-                        break
-            if patience <= iter:
-                    done_looping = True
+                test_score = numpy.mean(test_losses)
+                all_test_scores = numpy.append(all_test_scores,test_score)
+                all_test_epochs = numpy.append(all_test_epochs,epoch)
+                
+                print(('     epoch %i, minibatch %i, test error of '
+                       'best model %f') %
+                      (epoch, minibatch_index + 1,
+                       numpy.sum(test_score)))
+                if math.isnan(test_score):
                     break
+        if patience <= iter:
+                done_looping = True
+                break
 
         # Periodically save
         if numpy.any(numpy.equal(epoch,numpy.arange(5,5000,1))):
             f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_undone.save', 'wb')
-            for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
+            for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
                 cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
             f.close()
 
@@ -544,7 +551,7 @@ def SGD_training():
 	
     # Save data
     f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'.save', 'wb')
-    for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
+    for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
         cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
     f.close()
 
