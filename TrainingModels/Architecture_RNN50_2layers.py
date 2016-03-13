@@ -270,7 +270,7 @@ class PoissonRegression_alln(object):
             correct label
             
             """
-        return -T.sum((  (y * T.log(self.E_y_given_x)) - ntrials*(self.E_y_given_x)  ) , axis = 0)
+        return -T.sum((  (y[120:] * T.log(self.E_y_given_x[120:])) - ntrials*(self.E_y_given_x[120:])  ) , axis = 0)
 
 ######################
 ######################
@@ -507,7 +507,7 @@ def SGD_training():
                     test_actual=numpy.zeros((Ncells,3600))
                         #for i_test_movie in xrange(n_test_batches): #no more looping because I'm fitting a trial average version
                     for nneur in xrange(0,Ncells):
-                        test_losses_temp, test_pred_temp, test_actual_temp = test_model(nneur)
+                            test_losses_temp, test_pred_temp, test_actual_temp = test_model(nneur)
                             test_losses[nneur] = test_losses_temp
                             test_pred[nneur,:] = test_pred_temp
                             test_actual[nneur,:] = test_actual_temp
