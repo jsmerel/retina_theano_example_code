@@ -302,16 +302,21 @@ def SGD_training():
     RGC_locations = dataset_info[4]
     temporalFilter = dataset_info[5]
 
-    # compute number of minibatches for training, validation and testing
-    n_train_batches = (data_set_y_train.get_value(borrow=True).shape[0])/batch_size
+    # Number of batches/indices of movies
+    totalTrainBatches = 118
     n_valid_batches = 10
-    n_test_batches = (data_set_y_test.get_value(borrow=True).shape[0])/testBatchSize - n_valid_batches
+    n_train_batches = totalTrainBatches - n_valid_batches #(data_set_y_train.get_value(borrow=True).shape[0])/batch_size
+    n_test_batches = (data_set_y_test.get_value(borrow=True).shape[0])/testBatchSize
     Ncells = data_set_y_train.shape[1].eval()
+    #valInds = numpy.random.choice(totalTrainBatches,10,replace=False) # Choose validation movies randomly from the training movies
+    allInds = numpy.arange(0,totalTrainBatches)
+    valInds = numpy.arange(5,118,12) # Use same validation movies every time
+    trainInds = numpy.delete(allInds,valInds) # Use all training movies except those used for validation
 
     # Get indices of image patches (to swap out neurons)
     ordered_rgc_indices2 = numpy.zeros((Ncells,31*31))
     for i in xrange(0,Ncells):
-        print i
+        #print i
         image_patch_size = [30, 30]
         yinds = [RGC_locations[0,i].astype(int)-image_patch_size[0]/2,RGC_locations[0,i].astype(int)+image_patch_size[0]/2+1]
         xinds = [RGC_locations[1,i].astype(int)-image_patch_size[1]/2,RGC_locations[1,i].astype(int)+image_patch_size[1]/2+1]
@@ -384,8 +389,8 @@ def SGD_training():
     validate_model = theano.function(inputs=[index,i_n],
             outputs=T.sum(negative_log_likelihood(y)),
             givens={
-                x: data_set_x_test[0 * testBatchSize:(0 + 1) * batch_size , ordered_rgc_indices[i_n,:]],
-                y: data_set_y_test[index * testBatchSize:(index + 1) * batch_size,i_n],
+                x: data_set_x_train[index * batch_size:(index + 1) * batch_size,ordered_rgc_indices[i_n,:]],
+                y: data_set_y_train[index * batch_size:(index + 1) * batch_size,i_n],
                 neurnum: i_n})
 
     # Specify updates to params
@@ -428,15 +433,15 @@ def SGD_training():
     all_test_epochs = []
     all_val_scores=[]
     all_test_scores=[]
-    loop_vec = numpy.arange(n_train_batches)
 
-    while (epoch < n_epochs) and (not done_looping): # Keep looping until converged according to early stopping criteria
+
+    while (not done_looping): # Keep looping until converged according to early stopping criteria
         epoch = epoch + 1
-        numpy.random.shuffle(loop_vec) # Shuffle the order of train movies presented every epoch
+        numpy.random.shuffle(trainInds) # Shuffle the order of train movies presented every epoch
         
         # Training section
-        for minibatch_index in xrange(n_train_batches):
-            mini_iter = loop_vec[minibatch_index]
+        for i_train_movie in xrange(n_train_batches):
+            mini_iter = trainInds[i_train_movie]
             
             # Loop over neurons and train
             for nneur in xrange(0,Ncells):
@@ -451,10 +456,11 @@ def SGD_training():
                 
                 # Validation Data
                 validation_losses=[]
-                for i in xrange(n_valid_batches):
+                for i_val_movie in xrange(n_valid_batches):
+                    
                     for nneur in xrange(0,Ncells):
-                        aa = validate_model(i,nneur)
-                        validation_losses = numpy.append(validation_losses,aa)
+                        temp_val_cost = validate_model(valInds[i_val_movie],nneur)
+                        validation_losses = numpy.append(validation_losses,temp_val_cost)
             
                 this_validation_loss = numpy.mean(validation_losses)
                 all_val_scores = numpy.append(all_val_scores,this_validation_loss)
@@ -480,10 +486,10 @@ def SGD_training():
                     test_losses=numpy.zeros((Ncells,))
                     test_pred=numpy.zeros((Ncells,3600))
                     test_actual=numpy.zeros((Ncells,3600))
-                    for i in xrange(n_valid_batches,n_valid_batches+n_test_batches):
+                    for i_test_movie in xrange(n_test_batches):
                         for nneur in xrange(0,Ncells):
-                            test_losses_i, test_pred_i, test_actual_i = test_model(i,nneur)
-                            if i==n_valid_batches:
+                            test_losses_i, test_pred_i, test_actual_i = test_model(i_test_movie,nneur)
+                            if i==0:
                                 test_losses[nneur] = test_losses_i
                                 test_pred[nneur,0:3600] = test_pred_i
                                 test_actual[nneur,0:3600] = test_actual_i
@@ -509,7 +515,7 @@ def SGD_training():
         # Periodically save
         if numpy.any(numpy.equal(epoch,numpy.arange(5,5000,1))):
             f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_undone.save', 'wb')
-            for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + params]:
+            for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
                 cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
             f.close()
 
@@ -523,8 +529,8 @@ def SGD_training():
                           ' ran for %.2fm' % ((end_time - start_time) / 60.))
 	
     # Save data
-    f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_subperex.save', 'wb')
-    for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + params]:
+    f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'.save', 'wb')
+    for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
         cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
     f.close()
 
