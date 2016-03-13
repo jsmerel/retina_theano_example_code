@@ -253,16 +253,24 @@ class PoissonRegression_alln(object):
                   correct label
 
         """
-        if self.obj_f_type == 'poiss':
-            return -T.sum((  (y * T.log(self.E_y_given_x)) - (self.E_y_given_x)  ) , axis = 0)
-        elif self.obj_f_type == 'gauss':
-            return T.sum((  (y  - self.E_y_given_x)**2) , axis = 0)
-        elif self.obj_f_type == 'logexp':
-            return -T.sum((  (y * T.log(self.E_y_given_x)) - (self.E_y_given_x)  ) , axis = 0)
-
-        #return -T.sum( T.addbroadcast(maskData,1) * (  (y  - trialCount*self.E_y_given_x)**2) , axis = 0)
-        #return -T.sum( maskData *(T.log( (self.E_y_given_x.T ** y) * T.exp(-self.E_y_given_x.T) / T.gamma(y+1) )) )
-
+        
+        return -T.sum((  (y * T.log(self.E_y_given_x)) - (self.E_y_given_x)  ) , axis = 0)
+    
+    def negative_log_likelihood_trialaverageFit(self, y, ntrials):
+        """Return the mean of the negative log-likelihood of the prediction
+            of this model under a given target distribution.
+            
+            .. math::
+            p(y_observed|model,x_input) = E[y|x]^y exp(-E[y|x])/factorial(y)
+            
+            take sum over output neurons and times
+            
+            :type y: theano.tensor.TensorType
+            :param y: corresponds to a vector that gives for each example the
+            correct label
+            
+            """
+        return -T.sum((  (y * T.log(self.E_y_given_x)) - ntrials*(self.E_y_given_x)  ) , axis = 0)
 
 ######################
 ######################
@@ -333,8 +341,12 @@ def SGD_training():
         ordered_rgc_indices2[i,:] = hh
 
     ordered_rgc_indices= theano.shared(numpy.asarray(ordered_rgc_indices2,dtype=int64),borrow=True)
-    
-    
+
+    # Create data summed over test trials
+    data_set_y_test_alltrials = theano.shared(value=numpy.zeros((batch_size,Ncells)),borrow=True)
+    for i_trial in xrange(0,n_test_batches):
+        data_set_y_test_alltrials += data_set_y_test[i_trial * batch_size:(i_trial+ 1) * batch_size,:]
+
     ######################
     # BUILD ACTUAL MODEL #
     ######################
@@ -379,11 +391,18 @@ def SGD_training():
     # Create model functions #
     ##########################
 
-    test_model = theano.function(inputs=[index,i_n],
-            outputs=[negative_log_likelihood(y), Layer4.E_y_given_x, y],
+#    test_model = theano.function(inputs=[index,i_n],
+#            outputs=[negative_log_likelihood(y), Layer4.E_y_given_x, y],
+#            givens={
+#                x: data_set_x_test[0 * testBatchSize:(0 + 1) * batch_size, ordered_rgc_indices[i_n,:]],
+#                y: data_set_y_test[index * testBatchSize:(index + 1) * batch_size,i_n],
+#                neurnum: i_n})
+
+    test_model = theano.function(inputs=[i_n],
+            outputs=[Layer4.negative_log_likelihood_trialaverageFit(y,n_test_batches), Layer4.E_y_given_x, y],
             givens={
                 x: data_set_x_test[0 * testBatchSize:(0 + 1) * batch_size, ordered_rgc_indices[i_n,:]],
-                y: data_set_y_test[index * testBatchSize:(index + 1) * batch_size,i_n],
+                y: data_set_y_test_alltrials[:,i_n],
                 neurnum: i_n})
 
     validate_model = theano.function(inputs=[index,i_n],
@@ -434,7 +453,7 @@ def SGD_training():
     all_val_scores=[]
     all_test_scores=[]
 
-
+    pdb.set_trace()
     while (not done_looping): # Keep looping until converged according to early stopping criteria
         epoch = epoch + 1
         numpy.random.shuffle(trainInds) # Shuffle the order of train movies presented every epoch
@@ -486,17 +505,12 @@ def SGD_training():
                     test_losses=numpy.zeros((Ncells,))
                     test_pred=numpy.zeros((Ncells,3600))
                     test_actual=numpy.zeros((Ncells,3600))
-                    for i_test_movie in xrange(n_test_batches):
-                        for nneur in xrange(0,Ncells):
-                            test_losses_i, test_pred_i, test_actual_i = test_model(i_test_movie,nneur)
-                            if i==0:
-                                test_losses[nneur] = test_losses_i
-                                test_pred[nneur,0:3600] = test_pred_i
-                                test_actual[nneur,0:3600] = test_actual_i
-                            else:
-                                test_losses[nneur] += test_losses_i
-                                test_pred[nneur,0:3600] += test_pred_i
-                                test_actual[nneur,0:3600] += test_actual_i
+                        #for i_test_movie in xrange(n_test_batches): #no more looping because I'm fitting a trial average version
+                    for nneur in xrange(0,Ncells):
+                        test_losses_temp, test_pred_temp, test_actual_temp = test_model(nneur)
+                            test_losses[nneur] = test_losses_temp
+                            test_pred[nneur,:] = test_pred_temp
+                            test_actual[nneur,:] = test_actual_temp
 
                     test_score = numpy.mean(test_losses)
                     all_test_scores = numpy.append(all_test_scores,test_score)
