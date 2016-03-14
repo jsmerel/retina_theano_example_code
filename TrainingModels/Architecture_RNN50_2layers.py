@@ -102,6 +102,22 @@ def load_data(exp,on_ind):
     
     stimuli_train = stimuli_train.astype('float32')
 
+    # Normalization methods
+    
+    # Subtract mean from every example
+    #stimuli_train = stimuli_train - numpy.reshape(numpy.mean(stimuli_train,axis=1),(stimuli_train.shape[0],1))
+    #stimuli_test = stimuli_test - numpy.reshape(numpy.mean(stimuli_test,axis=1),(stimuli_test.shape[0],1))
+    
+    # Feature standardization
+    
+    #mean_train = numpy.reshape(numpy.mean(stimuli_train,axis=0),(1,stimuli_train.shape[1]))
+    #stimuli_train = stimuli_train - mean_train
+    #stimuli_test = stimuli_test - mean_train
+    
+    #std_train = numpy.std(stimuli_train,axis=0)
+    #stimuli_train = stimuli_train / std_train
+    #stimuli_test = stimuli_test / std_train
+
     # Separate out the ON and OFF cells
     responses_test = responses_test2[:,cell_ind[0,:]==on_ind]
     responses_train = responses_train2[:,cell_ind[0,:]==on_ind]
@@ -343,7 +359,7 @@ def SGD_training():
     ordered_rgc_indices= theano.shared(numpy.asarray(ordered_rgc_indices2,dtype=int64),borrow=True)
 
     # Create data summed over test trials
-    data_set_y_test_alltrials = theano.shared(value=numpy.zeros((batch_size,Ncells)),borrow=True)
+    data_set_y_test_alltrials = theano.shared(value=numpy.zeros((batch_size,Ncells),dtype=theano.config.floatX),borrow=True)
     for i_trial in xrange(0,n_test_batches):
         data_set_y_test_alltrials += data_set_y_test[i_trial * batch_size:(i_trial+ 1) * batch_size,:]
 
@@ -460,9 +476,10 @@ def SGD_training():
     all_val_epochs = numpy.append(all_val_epochs,epoch)
 
     # Test loss
+    test_losses=[]
     for nneur in xrange(0,Ncells):
         test_losses_temp, test_pred_temp, test_actual_temp = test_model(nneur)
-        test_losses[nneur] = test_losses_temp
+        test_losses = numpy.append(test_losses,test_losses_temp)
 
     test_score = numpy.sum(test_losses)
     all_test_scores = numpy.append(all_test_scores,test_score)
@@ -496,7 +513,7 @@ def SGD_training():
     done_looping = False
 
 
-    pdb.set_trace()
+
     while (not done_looping): # Keep looping until converged according to early stopping criteria
         epoch = epoch + 1
         numpy.random.shuffle(trainInds) # Shuffle the order of train movies presented every epoch
@@ -516,10 +533,10 @@ def SGD_training():
         all_train_epochs = numpy.append(all_train_epochs,epoch)
 
         # Iteration number
-        iter = (epoch - 1) * n_train_batches + minibatch_index
+        iter = (epoch - 1) * n_train_batches + i_train_movie
 
         # Validation and testing every epoch
-        if iter % validation_frequency == 0:
+        if (iter + 1) % validation_frequency == 0:
             
             # Validation Data
             validation_losses=[]
@@ -534,7 +551,7 @@ def SGD_training():
             all_val_epochs = numpy.append(all_val_epochs,epoch)
             
             print('epoch %i, minibatch %i, validation error %f' %
-                 (epoch, minibatch_index + 1,
+                 (epoch, i_train_movie+ 1,
                   this_validation_loss))
 
             # If best validaton score so far
@@ -566,7 +583,7 @@ def SGD_training():
                 
                 print(('     epoch %i, minibatch %i, test error of '
                        'best model %f') %
-                      (epoch, minibatch_index + 1,
+                      (epoch, i_train_movie+ 1,
                        numpy.sum(test_score)))
                 if math.isnan(test_score):
                     break
@@ -575,7 +592,7 @@ def SGD_training():
                 break
 
         # Periodically save
-        if numpy.any(numpy.equal(epoch,numpy.arange(5,5000,1))):
+        if numpy.any(numpy.equal(epoch,numpy.arange(1,5000,1))):
             f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_undone.save', 'wb')
             for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
                 cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
