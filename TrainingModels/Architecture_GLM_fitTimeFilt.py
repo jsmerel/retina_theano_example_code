@@ -95,9 +95,10 @@ def load_data(exp,on_ind,i):
     cell_ind = numpy.array(f['ONcell_vec'])
     f.close()
   
+    stim_mean = numpy.mean(stimuli_train)
     # Pad the image so RF centers close to the edge won't matter
-    stimuli_train = numpy.concatenate([stimuli_train, numpy.mean(stimuli_train)*numpy.ones((stimuli_train.shape[0],80))],axis=1) #,numpy.zeros((stimuli_train.shape[0],80))],axis=1)
-    stimuli_test = numpy.concatenate([stimuli_test, numpy.mean(stimuli_train)*numpy.ones((stimuli_test.shape[0],80))],axis=1) #,numpy.zeros((stimuli_test.shape[0],80))],axis=1)
+    stimuli_train = numpy.concatenate([stimuli_train, stim_mean*numpy.ones((stimuli_train.shape[0],80))],axis=1) #,numpy.zeros((stimuli_train.shape[0],80))],axis=1)
+    stimuli_test = numpy.concatenate([stimuli_test, stim_mean*numpy.ones((stimuli_test.shape[0],80))],axis=1) #,numpy.zeros((stimuli_test.shape[0],80))],axis=1)
     
     stimuli_train = stimuli_train.astype('float32')
 
@@ -151,7 +152,7 @@ def load_data(exp,on_ind,i):
     
     data_set_x_train, data_set_y_train = shared_dataset(data_set_train)
     data_set_x_test, data_set_y_test = shared_dataset(data_set_test)
-    rval = [(data_set_x_train, data_set_y_train), (data_set_x_test, data_set_y_test), trainBatchSize, testBatchSize, RGC_locations, temporalFilter]
+    rval = [(data_set_x_train, data_set_y_train), (data_set_x_test, data_set_y_test), trainBatchSize, testBatchSize, RGC_locations, temporalFilter,stim_mean]
 
     return rval
 
@@ -164,7 +165,7 @@ def load_data(exp,on_ind,i):
 class LeNetConvPoolLayer_temporal(object):
     """Pool Layer of a convolutional network """
 
-    def __init__(self, rng, input, filter_shape, image_shape, poolsize=(2, 2), outputType = 'rl'):
+    def __init__(self, rng, input, filter_shape, image_shape, padvalue,poolsize=(1, 1), outputType = 'l'):
         """
         Allocate a LeNetConvPoolLayer with shared variable internal parameters.
 
@@ -207,7 +208,7 @@ class LeNetConvPoolLayer_temporal(object):
         #image_shape_pad[3] += a2+b2
         #image_shape_pad[4] += a3+b3
 
-        input_padded = theano.shared(value=numpy.zeros(image_shape_pad, \
+        input_padded = theano.shared(value=padvalue*numpy.ones(image_shape_pad, \
             dtype=theano.config.floatX), borrow=True)
 
         #input_padded = T.set_subtensor(input_padded[:,a1:-b1,:,a2:-b2,a3:-b3], input)
@@ -384,7 +385,8 @@ def SGD_training():
     batch_size = min(trainBatchSize,testBatchSize) #train and test batch sizes should be same size
     RGC_locations = dataset_info[4]
     temporalFilter = dataset_info[5]
-
+    stim_mean = dataset_info[6]
+    
     # Number of batches/indices of movies
     totalTrainBatches = 118
     n_valid_batches = 10
@@ -443,10 +445,11 @@ def SGD_training():
     
     reshaped_input = T.shape_padleft(  x.reshape((batch_size, 1, image_patch_size, image_patch_size))  , n_ones=1)
 
-    Layer1 = LeNetConvPoolLayer_temporal(rng, input = reshaped_input, filter_shape=(1, temporalFilterlength, 1, 1, 1), image_shape = (1, batch_size, 1, image_patch_size, image_patch_size), poolsize=(1, 1), outputType = 'l')
+    Layer1 = LeNetConvPoolLayer_temporal(rng, input = reshaped_input, filter_shape=(1, temporalFilterlength, 1, 1, 1), image_shape = (1, batch_size, 1, image_patch_size, image_patch_size),padvalue = stim_mean,poolsize=(1, 1), outputType = 'l')
     Layer2 = HiddenLayer(rng,input=Layer1.output.reshape((batch_size,image_patch_size*image_patch_size)),n_in=image_patch_size*image_patch_size,n_out=1)
     Layer2b_input = Layer2.output.reshape((batch_size,))
     Layer2b = PoissonRegression(input=Layer2b_input,n_in=1,n_out=1)
+
 
     #######################
     # Objective function
@@ -593,7 +596,7 @@ def SGD_training():
             # Validation Data
             validation_losses=[]
             for i_val_movie in xrange(n_valid_batches):
-                temp_val_cost = validate_model(valInds[i_val_movie],nneur)
+                temp_val_cost = validate_model(valInds[i_val_movie])
                 validation_losses = numpy.append(validation_losses,temp_val_cost)
         
             this_validation_loss = numpy.sum(validation_losses)
@@ -634,7 +637,7 @@ def SGD_training():
 
         # Periodically save
         if numpy.any(numpy.equal(epoch,numpy.arange(1,5000,5))):
-            f = file('Theano_GLMs/GLM_fitTimeFilt_'+exp+'_'+cell_type+'_N'+str(n_neur)+'undone.save', 'wb')
+            f = file('Theano_GLMs/GLM_fitTimeFilt_'+exp+'_'+cell_type+'_N'+str(n_neur)+'_undone.save', 'wb')
             for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
                 cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
             f.close()
