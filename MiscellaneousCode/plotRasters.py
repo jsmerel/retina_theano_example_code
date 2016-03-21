@@ -1,3 +1,26 @@
+import gzip
+import os
+import sys
+import time
+import pdb
+
+from pylab import *
+
+import matplotlib
+#matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+import theano
+import theano.tensor as T
+from theano.tensor.signal import downsample
+from theano.tensor.nnet import conv
+from theano.tensor.nnet import conv3d2d
+
+import cPickle
+import scipy
+import random
+import numpy
+import h5py
 
 def raster(event_times_list, color='k'):
     """
