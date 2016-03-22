@@ -80,9 +80,10 @@ def load_data(exp,on_ind):
     #############
     print '... loading data'
     
-    basedir = '/vega/stats/users/erb2180/RetinaProject/Data/'
-    #basedir = '/Volumes/Backup/RetinaProject/Data/Data/'
-    dataset= ''+basedir+'NSEM'+exp+'_movResp.mat'
+    #basedir = '/vega/stats/users/erb2180/RetinaProject/Data/'
+    basedir = '/Volumes/Backup/RetinaProject/Data/Data/'
+    dataset= ''+basedir+'NSEM'+exp+'_movResp_crop.mat'
+    
     
     f = h5py.File(dataset)
     stimuli_train = numpy.array(f['FitMovies'])/255.00
@@ -99,6 +100,8 @@ def load_data(exp,on_ind):
     # Pad the image so RF centers close to the edge won't matter
     stimuli_train = numpy.concatenate([stimuli_train, numpy.mean(stimuli_train)*numpy.ones((stimuli_train.shape[0],80))],axis=1) #,numpy.zeros((stimuli_train.shape[0],80))],axis=1)
     stimuli_test = numpy.concatenate([stimuli_test, numpy.mean(stimuli_train)*numpy.ones((stimuli_test.shape[0],80))],axis=1) #,numpy.zeros((stimuli_test.shape[0],80))],axis=1)
+    #stimuli_train = numpy.concatenate([stimuli_train, numpy.zeros((stimuli_train.shape[0],80))],axis=1) #,numpy.zeros((stimuli_train.shape[0],80))],axis=1)
+    #stimuli_test = numpy.concatenate([stimuli_test, numpy.zeros((stimuli_test.shape[0],80))],axis=1) #,numpy.zeros((stimuli_test.shape[0],80))],axis=1)
     
     stimuli_train = stimuli_train.astype('float32')
 
@@ -391,8 +394,8 @@ def SGD_training():
 
     # Number of batches/indices of movies
     totalTrainBatches = 118
-    n_valid_batches = 2 #10
-    n_train_batches = 2 #totalTrainBatches - n_valid_batches #(data_set_y_train.get_value(borrow=True).shape[0])/batch_size
+    n_valid_batches = 10
+    n_train_batches = totalTrainBatches - n_valid_batches #(data_set_y_train.get_value(borrow=True).shape[0])/batch_size
     n_test_batches = (data_set_y_test.get_value(borrow=True).shape[0])/testBatchSize
     Ncells = data_set_y_train.shape[1].eval()
     #valInds = numpy.random.choice(totalTrainBatches,10,replace=False) # Choose validation movies randomly from the training movies
@@ -509,6 +512,7 @@ def SGD_training():
                 x: data_set_x_train[index * batch_size:(index + 1) * batch_size,:],
                 y: data_set_y_train[index * batch_size:(index + 1) * batch_size,:],
                 neurnum: i_n})
+
 
     #####################################
     # GET INITIAL TRAIN/VAL/TEST LOSSES #
@@ -649,8 +653,8 @@ def SGD_training():
 
         # Periodically save
         if numpy.any(numpy.equal(epoch,numpy.arange(1,5000,1))):
-            f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_parallelneurons_test_undone.save', 'wb')
-            for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
+            f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_parallelneurons_padzero_undone.save', 'wb')
+            for obj in [[best_params] + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + [params]]:
                 cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
             f.close()
 
@@ -664,8 +668,8 @@ def SGD_training():
                           ' ran for %.2fm' % ((end_time - start_time) / 60.))
 	
     # Save data
-    f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_parallelneurons.save', 'wb')
-    for obj in [best_params + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + params]:
+    f = file('RNN50_2layers/RNN50_2layers_'+exp+'_'+cell_type+'_parallelneurons_padzero.save', 'wb')
+    for obj in [[best_params] + [test_score] + [test_losses] + [test_pred] + [test_actual] + [all_train_epochs] + [all_train_scores]  + [all_val_epochs] + [all_val_scores] + [all_test_epochs] + [all_test_scores] + [epoch] + [valInds] + [trainInds] + [params]]:
         cPickle.dump(obj, f, protocol=cPickle.HIGHEST_PROTOCOL)
     f.close()
 
